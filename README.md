@@ -92,81 +92,81 @@ If you use other MCP clients, you can use the following general configuration:
 - Python automatically handles relative imports
 - Most simple and reliable configuration
 
-## 🛠️ MCP 协议使用指南
+## 🛠️ MCP Protocol Usage Guide
 
-### 基于 MCP 协议的客户端开发
+### Client Development Based on MCP Protocol
 
-本项目基于 [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) 协议，提供标准化的工具调用接口。以下是编写 MCP 客户端的核心要点：
+This project is based on the [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) protocol and provides standardized tool call interfaces. Here are the key points for writing MCP clients:
 
-#### 1. MCP 连接建立
+#### 1. MCP Connection Establishment
 
 ```python
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-# 配置服务器参数
+# Configure server parameters
 server_params = StdioServerParameters(
-    command="/path/to/venv/bin/python",  # Python 解释器路径
-    args=["/path/to/server.py"]         # 服务器脚本路径
+    command="/path/to/venv/bin/python",  # Python interpreter path
+    args=["/path/to/server.py"]         # Server script path
 )
 
-# 建立 stdio 连接
+# Establish stdio connection
 async with stdio_client(server_params) as (read, write):
     async with ClientSession(read, write) as session:
-        await session.initialize()  # 初始化会话
+        await session.initialize()  # Initialize session
 ```
 
-#### 2. 工具调用与结果处理
+#### 2. Tool Calls and Result Handling
 
-**⚠️ 重要：MCP 返回值结构**
+**⚠️ Important: MCP Return Value Structure**
 
-MCP 服务器返回的是 `CallToolResult` 对象，实际内容在 `result.content` 中：
+The MCP server returns a `CallToolResult` object, with the actual content in `result.content`:
 
 ```python
-# ❌ 错误的写法（常见错误）
-for content in result:  # result 不是可迭代对象
+# ❌ Incorrect approach (common error)
+for content in result:  # result is not iterable
     print(content.text)
 
-# ✅ 正确的写法
+# ✅ Correct approach
 result = await session.call_tool("tool_name", {"param": "value"})
-for content in result.content:  # 访问 content 属性
-    if content.type == "text":  # 检查内容类型
+for content in result.content:  # Access content attribute
+    if content.type == "text":  # Check content type
         print(content.text)
 ```
 
-#### 3. 本项目的工具接口
+#### 3. Tool Interfaces for This Project
 
-**可用工具列表：**
-- `say_hello` - 测试连接
-- `echo_message` - 回显消息  
-- `crawl_web_page` - 网页爬取
+**Available Tools:**
+- `say_hello` - Test connection
+- `echo_message` - Echo message  
+- `crawl_web_page` - Web page crawling
 
-**crawl_web_page 工具参数：**
+**crawl_web_page Tool Parameters:**
 ```python
 {
-    "url": "https://example.com",           # 要爬取的URL
-    "save_path": "./output_directory"       # 保存路径
+    "url": "https://example.com",           # URL to crawl
+    "save_path": "./output_directory"       # Save path
 }
 ```
 
-**返回值处理：**
+**Return Value Handling:**
 ```python
 result = await session.call_tool("crawl_web_page", {
     "url": "https://github.com/unclecode/crawl4ai",
     "save_path": "./results"
 })
 
-# 正确解析返回结果
+# Parse return results correctly
 for content in result.content:
     if content.type == "text":
         message = content.text
-        print(f"爬取结果: {message}")
+        print(f"Crawling result: {message}")
         
-        # 消息格式示例：
+        # Message format example:
         # "Successfully crawled https://github.com/unclecode/crawl4ai and saved 8 files to ./results/20231119-143022"
 ```
 
-#### 4. 错误处理最佳实践
+#### 4. Error Handling Best Practices
 
 ```python
 async def safe_crawl(session: ClientSession, url: str, save_path: str):
@@ -176,19 +176,19 @@ async def safe_crawl(session: ClientSession, url: str, save_path: str):
             "save_path": save_path
         })
         
-        # 检查返回结果
+        # Check return results
         if result.content:
             for content in result.content:
                 if content.type == "text":
                     if "Failed to crawl" in content.text:
-                        print(f"❌ 爬取失败: {content.text}")
+                        print(f"❌ Crawling failed: {content.text}")
                     else:
-                        print(f"✅ 爬取成功: {content.text}")
+                        print(f"✅ Crawling successful: {content.text}")
         else:
-            print("❌ 未收到返回结果")
+            print("❌ No return result received")
             
     except Exception as e:
-        print(f"❌ 调用工具失败: {e}")
+        print(f"❌ Tool call failed: {e}")
 ```
 
 ## 🛠️ Available Tools
@@ -309,7 +309,7 @@ async def crawl_example():
     except Exception as e:
         print(f"❌ Crawling failed: {e}")
 
-# 运行示例
+# Run example
 asyncio.run(crawl_example())
 ```
 
@@ -493,53 +493,7 @@ This is equivalent to running:
 python -m spider_mcp_server.server
 ```
 
-## 📚 完整示例代码
-
-项目提供了完整的客户端示例代码：
-
-```
-examples/
-├── mcp_client_tutorial.py    # 完整教程（推荐）
-├── quick_start.py           # 快速开始示例
-└── README.md               # 示例说明
-```
-
-### 运行示例
-
-```bash
-# 进入项目目录
-cd crawler-mcp-server
-
-# 安装依赖（如果还未安装）
-pip install -e .
-
-# 运行完整教程
-python examples/mcp_client_tutorial.py
-
-# 运行快速开始示例
-python examples/quick_start.py
-```
-
-### 示例功能
-
-**完整教程 (mcp_client_tutorial.py):**
-- ✅ 环境自动检测
-- ✅ 连接管理封装
-- ✅ 错误处理演示
-- ✅ 批量爬取示例
-- ✅ 结果解析演示
-- ✅ 最佳实践展示
-
-**快速开始 (quick_start.py):**
-- ✅ 最简使用方式
-- ✅ 核心API演示
-- ✅ 正确的返回值处理
-
-这些示例展示了如何正确使用 MCP 协议与 spider-mcp-server 交互，包括：
-- 正确的连接建立方式
-- ✅ 准确的返回值解析（`result.content` 而不是直接迭代 `result`）
-- 完整的错误处理机制
-- 实际的使用场景演示
+## 🛠️ Available Tools
 
 ---
 
