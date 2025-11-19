@@ -92,6 +92,105 @@ If you use other MCP clients, you can use the following general configuration:
 - Python automatically handles relative imports
 - Most simple and reliable configuration
 
+## 🛠️ MCP 协议使用指南
+
+### 基于 MCP 协议的客户端开发
+
+本项目基于 [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) 协议，提供标准化的工具调用接口。以下是编写 MCP 客户端的核心要点：
+
+#### 1. MCP 连接建立
+
+```python
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+# 配置服务器参数
+server_params = StdioServerParameters(
+    command="/path/to/venv/bin/python",  # Python 解释器路径
+    args=["/path/to/server.py"]         # 服务器脚本路径
+)
+
+# 建立 stdio 连接
+async with stdio_client(server_params) as (read, write):
+    async with ClientSession(read, write) as session:
+        await session.initialize()  # 初始化会话
+```
+
+#### 2. 工具调用与结果处理
+
+**⚠️ 重要：MCP 返回值结构**
+
+MCP 服务器返回的是 `CallToolResult` 对象，实际内容在 `result.content` 中：
+
+```python
+# ❌ 错误的写法（常见错误）
+for content in result:  # result 不是可迭代对象
+    print(content.text)
+
+# ✅ 正确的写法
+result = await session.call_tool("tool_name", {"param": "value"})
+for content in result.content:  # 访问 content 属性
+    if content.type == "text":  # 检查内容类型
+        print(content.text)
+```
+
+#### 3. 本项目的工具接口
+
+**可用工具列表：**
+- `say_hello` - 测试连接
+- `echo_message` - 回显消息  
+- `crawl_web_page` - 网页爬取
+
+**crawl_web_page 工具参数：**
+```python
+{
+    "url": "https://example.com",           # 要爬取的URL
+    "save_path": "./output_directory"       # 保存路径
+}
+```
+
+**返回值处理：**
+```python
+result = await session.call_tool("crawl_web_page", {
+    "url": "https://github.com/unclecode/crawl4ai",
+    "save_path": "./results"
+})
+
+# 正确解析返回结果
+for content in result.content:
+    if content.type == "text":
+        message = content.text
+        print(f"爬取结果: {message}")
+        
+        # 消息格式示例：
+        # "Successfully crawled https://github.com/unclecode/crawl4ai and saved 8 files to ./results/20231119-143022"
+```
+
+#### 4. 错误处理最佳实践
+
+```python
+async def safe_crawl(session: ClientSession, url: str, save_path: str):
+    try:
+        result = await session.call_tool("crawl_web_page", {
+            "url": url,
+            "save_path": save_path
+        })
+        
+        # 检查返回结果
+        if result.content:
+            for content in result.content:
+                if content.type == "text":
+                    if "Failed to crawl" in content.text:
+                        print(f"❌ 爬取失败: {content.text}")
+                    else:
+                        print(f"✅ 爬取成功: {content.text}")
+        else:
+            print("❌ 未收到返回结果")
+            
+    except Exception as e:
+        print(f"❌ 调用工具失败: {e}")
+```
+
 ## 🛠️ Available Tools
 
 ### 1. `crawl_web_page`
@@ -170,33 +269,47 @@ output_directory/
 
 ```python
 import asyncio
+import os
+from pathlib import Path
+
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 async def crawl_example():
-    # Connect to MCP server
+    # 配置服务器连接参数（请根据实际路径调整）
+    project_root = Path("/path/to/your/crawler-mcp-server")
     server_params = StdioServerParameters(
-        command="/path/to/crawler-mcp-server/venv/bin/python",
-        args=["/path/to/crawler-mcp-server/spider_mcp_server/server.py"]
+        command=str(project_root / "venv" / "bin" / "python"),
+        args=[str(project_root / "spider_mcp_server" / "server.py")]
     )
     
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            # Initialize session
-            await session.initialize()
-            
-            # Crawl webpage
-            result = await session.call_tool("crawl_web_page", {
-                "url": "https://github.com/unclecode/crawl4ai",
-                "save_path": "./crawl_results"
-            })
-            
-            print("Crawling completed!")
-            for content in result:
-                if hasattr(content, 'text'):
-                    print(f"Result: {content.text}")
+    # 创建输出目录
+    output_dir = "./crawl_results"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    try:
+        # 连接到MCP服务器
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                # 初始化会话
+                await session.initialize()
+                
+                # 调用爬虫工具
+                result = await session.call_tool("crawl_web_page", {
+                    "url": "https://github.com/unclecode/crawl4ai",
+                    "save_path": output_dir
+                })
+                
+                # ✅ 正确处理返回结果
+                # MCP服务器返回的是 CallToolResult 对象，内容在 result.content 中
+                for content in result.content:
+                    if content.type == "text":
+                        print(f"✅ 爬取结果: {content.text}")
+                        
+    except Exception as e:
+        print(f"❌ 爬取失败: {e}")
 
-# Run example
+# 运行示例
 asyncio.run(crawl_example())
 ```
 
@@ -205,7 +318,7 @@ asyncio.run(crawl_example())
 ```python
 urls = [
     "https://example.com",
-    "https://github.com",
+    "https://github.com", 
     "https://stackoverflow.com"
 ]
 
@@ -214,7 +327,14 @@ for i, url in enumerate(urls):
         "url": url,
         "save_path": f"./results/crawl_{i+1}"
     })
-    print(f"Crawled: {url}")
+    
+    # ✅ 正确处理返回结果
+    for content in result.content:
+        if content.type == "text":
+            print(f"Crawled: {url} - {content.text}")
+    
+    # 添加延时避免过于频繁的请求
+    await asyncio.sleep(2)
 ```
 
 ## 🧪 Development and Testing
@@ -372,6 +492,54 @@ This is equivalent to running:
 ```bash
 python -m spider_mcp_server.server
 ```
+
+## 📚 完整示例代码
+
+项目提供了完整的客户端示例代码：
+
+```
+examples/
+├── mcp_client_tutorial.py    # 完整教程（推荐）
+├── quick_start.py           # 快速开始示例
+└── README.md               # 示例说明
+```
+
+### 运行示例
+
+```bash
+# 进入项目目录
+cd crawler-mcp-server
+
+# 安装依赖（如果还未安装）
+pip install -e .
+
+# 运行完整教程
+python examples/mcp_client_tutorial.py
+
+# 运行快速开始示例
+python examples/quick_start.py
+```
+
+### 示例功能
+
+**完整教程 (mcp_client_tutorial.py):**
+- ✅ 环境自动检测
+- ✅ 连接管理封装
+- ✅ 错误处理演示
+- ✅ 批量爬取示例
+- ✅ 结果解析演示
+- ✅ 最佳实践展示
+
+**快速开始 (quick_start.py):**
+- ✅ 最简使用方式
+- ✅ 核心API演示
+- ✅ 正确的返回值处理
+
+这些示例展示了如何正确使用 MCP 协议与 spider-mcp-server 交互，包括：
+- 正确的连接建立方式
+- ✅ 准确的返回值解析（`result.content` 而不是直接迭代 `result`）
+- 完整的错误处理机制
+- 实际的使用场景演示
 
 ---
 
