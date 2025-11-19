@@ -49,6 +49,7 @@ pip install -e .
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
+**方案一：推荐配置（使用 PYTHONPATH）**
 ```json
 {
   "mcpServers": {
@@ -61,6 +62,22 @@ pip install -e .
       "env": {
         "PYTHONPATH": "/path/to/crawler-mcp-server/"
       }
+    }
+  }
+}
+```
+
+**方案二：使用模块运行（无需 PYTHONPATH）**
+```json
+{
+  "mcpServers": {
+    "spider": {
+      "command": "/path/to/crawler-mcp-server/venv/bin/python",
+      "args": [
+        "-m",
+        "spider_mcp_server.server"
+      ],
+      "description": "MCP spider server using crawl4ai for web crawling and content extraction"
     }
   }
 }
@@ -89,6 +106,17 @@ pip install -e .
   }
 }
 ```
+
+### 📋 配置说明
+
+**为什么需要 PYTHONPATH？**
+- 代码中使用了相对导入：`from spider_mcp_server.crawl import saveJson`
+- PYTHONPATH 确保 Python 能找到项目根目录下的模块
+- 如果不设置，会出现 `ModuleNotFoundError: No module named 'spider_mcp_server'`
+
+**两种方案对比：**
+- ✅ **方案一**：更直观，兼容性更好
+- ✅ **方案二**：使用 `-m` 参数，Python 自动处理模块路径，无需设置 PYTHONPATH
 
 ### 环境变量配置
 
@@ -186,11 +214,18 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 async def crawl_example():
-    # 连接到 MCP 服务器
+    # 连接到 MCP 服务器（推荐方案）
     server_params = StdioServerParameters(
         command="/path/to/crawler-mcp-server/venv/bin/python",
-        args=["/path/to/crawler-mcp-server/spider_mcp_server/server.py"]
+        args=["/path/to/crawler-mcp-server/spider_mcp_server/server.py"],
+        env={"PYTHONPATH": "/path/to/crawler-mcp-server/"}
     )
+    
+    # 或者使用模块运行（无需 PYTHONPATH）
+    # server_params = StdioServerParameters(
+    #     command="/path/to/crawler-mcp-server/venv/bin/python",
+    #     args=["-m", "spider_mcp_server.server"]
+    # )
     
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
