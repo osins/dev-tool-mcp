@@ -95,12 +95,9 @@ pip install -e .
       "description": "Web crawling and content extraction server",
       "command": "/path/to/crawler-mcp-server/venv/bin/python",
       "args": [
-        "/path/to/crawler-mcp-server/spider_mcp_server/server.py"
+        "-m",
+        "spider_mcp_server.server"
       ],
-      "environment": {
-        "PYTHONPATH": "/path/to/crawler-mcp-server/",
-        "CRAWL4AI_LOG_LEVEL": "INFO"
-      },
       "timeout": 30000
     }
   }
@@ -109,23 +106,24 @@ pip install -e .
 
 ### 📋 配置说明
 
-**为什么需要 PYTHONPATH？**
-- 代码中使用了相对导入：`from spider_mcp_server.crawl import saveJson`
-- PYTHONPATH 确保 Python 能找到项目根目录下的模块
-- 如果不设置，会出现 `ModuleNotFoundError: No module named 'spider_mcp_server'`
+**推荐使用模块运行方式：**
+- 使用 `-m spider_mcp_server.server` 参数
+- Python 自动处理模块导入路径
+- 无需设置任何环境变量
+- 更简洁、更可靠
 
-**两种方案对比：**
-- ✅ **方案一**：更直观，兼容性更好
-- ✅ **方案二**：使用 `-m` 参数，Python 自动处理模块路径，无需设置 PYTHONPATH
+**如果必须直接运行脚本：**
+- 需要设置 `PYTHONPATH` 环境变量指向项目根目录
+- 代码中使用了相对导入：`from spider_mcp_server.crawl import saveJson`
+- 不设置会出现 `ModuleNotFoundError: No module named 'spider_mcp_server'`
 
 ### 环境变量配置
 
-可选的环境变量：
+通常不需要额外环境变量，因为使用模块运行方式 Python 会自动处理路径。
+
+如果需要自定义，可以设置：
 
 ```bash
-# 设置 crawl4ai 日志级别
-export CRAWL4AI_LOG_LEVEL=INFO
-
 # 设置输出目录（默认为 test_output）
 export SPIDER_OUTPUT_DIR=/path/to/output
 
@@ -214,18 +212,11 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 async def crawl_example():
-    # 连接到 MCP 服务器（推荐方案）
+    # 连接到 MCP 服务器（使用模块运行，无需环境变量）
     server_params = StdioServerParameters(
         command="/path/to/crawler-mcp-server/venv/bin/python",
-        args=["/path/to/crawler-mcp-server/spider_mcp_server/server.py"],
-        env={"PYTHONPATH": "/path/to/crawler-mcp-server/"}
+        args=["-m", "spider_mcp_server.server"]
     )
-    
-    # 或者使用模块运行（无需 PYTHONPATH）
-    # server_params = StdioServerParameters(
-    #     command="/path/to/crawler-mcp-server/venv/bin/python",
-    #     args=["-m", "spider_mcp_server.server"]
-    # )
     
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
