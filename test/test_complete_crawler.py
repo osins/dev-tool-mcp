@@ -68,7 +68,9 @@ async def test_complete_crawler():
 
             "save_screenshot": True,
 
-            "save_pdf": True
+            "save_pdf": True,
+
+            "generate_markdown": True
 
         })
 
@@ -100,9 +102,13 @@ async def test_complete_crawler():
 
 
 
-        expected_files = ["output.html", "output.json", "output.png", "output.pdf"]
+
+
+        expected_files = ["output.html", "output.json", "output.png", "output.pdf", "raw_markdown.md"]
 
         for file in expected_files:
+
+
 
             file_path = os.path.join(output_dir, file)
 
@@ -113,6 +119,8 @@ async def test_complete_crawler():
             assert os.path.getsize(file_path) > 0, f"File {file} is empty."
 
             print(f"   ✅ {file} exists and is not empty.")
+
+
 
 
 
@@ -130,8 +138,10 @@ async def test_complete_crawler():
 
         # Clean up the specific output directory created by the test
 
-        if output_dir and os.path.exists(output_dir):
+        # shutil.rmtree(output_dir)
 
-            shutil.rmtree(output_dir)
+        # print(f"\n🧹 Cleaned test run directory: {output_dir}")
 
-            print(f"\n🧹 Cleaned test run directory: {output_dir}")
+        pass
+
+

@@ -2,6 +2,7 @@ from operator import ge
 from enum import Enum
 from crawl4ai import LLMConfig, LLMExtractionStrategy, CrawlerRunConfig, CacheMode
 from pydantic import BaseModel
+from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 import os
 import litellm
@@ -16,7 +17,8 @@ DEFAULT_INSTRUCTION = """
 def llm_config(
     instruction: str = DEFAULT_INSTRUCTION,
     save_screenshot: bool = False,
-    save_pdf: bool = False
+    save_pdf: bool = False,
+    generate_markdown: bool = False
 ):
     litellm.client_session_timeout = 3000
     # litellm._turn_on_debug() 
@@ -45,11 +47,14 @@ def llm_config(
     llm_strat.show_usage()
     llm_strat.verbose = True
 
+    markdown_gen = DefaultMarkdownGenerator() if generate_markdown else None
+
     # type: ignore
     return CrawlerRunConfig(
         extraction_strategy=llm_strat,
         screenshot=save_screenshot,
         pdf=save_pdf,
+        markdown_generator=markdown_gen,
         cache_mode=CacheMode.DISABLED,
         word_count_threshold=1,
         remove_overlay_elements=True,

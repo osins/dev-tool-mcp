@@ -18,9 +18,10 @@ from spider_mcp_server.utils import save
 def crawl_config(
     instruction: str = DEFAULT_INSTRUCTION,
     save_screenshot: bool = False,
-    save_pdf: bool = False
+    save_pdf: bool = False,
+    generate_markdown: bool = False
 ):
-    return llm_config(instruction, save_screenshot, save_pdf)
+    return llm_config(instruction, save_screenshot, save_pdf, generate_markdown)
 
 async def save_download_files_json(path: str, result: CrawlResult, call: Callable[[str], None]):
     if hasattr(result, 'downloaded_files') and result.downloaded_files:
@@ -52,7 +53,8 @@ async def crawl_web_page(
     path: str, 
     instruction:str = DEFAULT_INSTRUCTION,
     save_screenshot: bool = False,
-    save_pdf: bool = False
+    save_pdf: bool = False,
+    generate_markdown: bool = False
 ) -> str:
     """
     Crawl a web page and save content in multiple formats (HTML, JSON, PDF, screenshot) with downloaded files.
@@ -79,7 +81,8 @@ async def crawl_web_page(
             result = await crawler.arun(url=url, config=crawl_config(
                 instruction,
                 save_screenshot,
-                save_pdf
+                save_pdf,
+                generate_markdown
             ))
 
             if result.success:
@@ -108,8 +111,12 @@ async def crawl_web_page(
                 # 4. Save PDF file
                 if save_pdf and result.pdf:
                     save(path, 'output.pdf', result.pdf, lambda s: saved_files.append(s))
+
+                # 5. Save Markdown file
+                if generate_markdown and hasattr(result, 'markdown') and result.markdown:
+                    save(path, 'raw_markdown.md', result.markdown.raw_markdown, lambda s: saved_files.append(s))
                 
-                # 5. Save downloaded files as JSON
+                # 6. Save downloaded files as JSON
                 await save_download_files_json(path, result, lambda s: saved_files.append(s))
                 
                 return f"Successfully crawled {url} and saved {len(saved_files)} files to {path}"
@@ -118,4 +125,5 @@ async def crawl_web_page(
                 return f"Failed to crawl URL: {result.error_message}"
     except Exception as e:
         return f"Error crawling URL or saving files: {str(e)}"
+
 

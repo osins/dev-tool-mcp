@@ -82,6 +82,11 @@ async def handle_list_tools() -> list[Tool]:
                         "type": "boolean",
                         "description": "Save a PDF of the page",
                         "default": False
+                    },
+                    "generate_markdown": {
+                        "type": "boolean",
+                        "description": "Generate a Markdown representation of the page",
+                        "default": False
                     }
                 },
                 "required": ["url", "save_path"]
@@ -110,8 +115,9 @@ async def handle_call_tool(name: str, arguments: dict[str, object]) -> list[Text
         instruction = cast(str, arguments.get("instruction", DEFAULT_INSTRUCTION))
         save_screenshot = cast(bool, arguments.get("save_screenshot", False))
         save_pdf = cast(bool, arguments.get("save_pdf", False))
+        generate_markdown = cast(bool, arguments.get("generate_markdown", False))
 
-        result = await crawl_web_page(url, save_path, instruction, save_screenshot, save_pdf)
+        result = await crawl_web_page(url, save_path, instruction, save_screenshot, save_pdf, generate_markdown)
         return [TextContent(type="text", text=result)]
     else:
         error_msg = f"Unknown tool: {name}"
