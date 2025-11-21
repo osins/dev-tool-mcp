@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import pytest
 import asyncio
 import sys
 import traceback
@@ -22,7 +23,7 @@ def test_litellm():
                 {"role": "user", "content": "你好，请回答一个简单问题：1+1=多少？"}
             ],
             api_base=API_BASE,
-            timeout=30
+            timeout=300
         )
 
         print("=== 响应开始 ===")
@@ -32,6 +33,7 @@ def test_litellm():
             print(response)
         print("=== 响应结束 ===")
 
+@pytest.mark.asyncio
 async def test_llm_client():
     print("正在调用 LLMClient...")
     client = LLMClient()
@@ -41,6 +43,7 @@ async def test_llm_client():
     print(response)
     print("=== LLMClient 响应结束 ===")
 
+@pytest.mark.asyncio
 async def test_crawl_llama():
     # 配置 LLM 用于提取
     llm_config = LLMConfig(
@@ -83,21 +86,3 @@ async def test_crawl_llama():
             print(f"LLM extracted content: {result.extracted_content}")
         else:
             print(f"Crawl4AI with LLM extraction failed: {result.error}")
-
-async def main():
-    try:
-        # 先测试 Ollama 连接
-        test_litellm()
-
-        # 再测试 LLMClient
-        await test_llm_client()
-
-        # 最后测试 Crawl4AI 调用
-        # await test_crawl_llama()
-    except Exception as e:
-        print("调用过程中出现异常：", str(e))
-        traceback.print_exc()
-        sys.exit(1)
-
-if __name__ == "__main__":
-    asyncio.run(main())

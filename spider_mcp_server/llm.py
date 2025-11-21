@@ -10,10 +10,14 @@ from spider_mcp_server.config import OLLAMA_API_BASE, OLLAMA_MODEL, OLLAMA_TOKEN
 
 
 DEFAULT_INSTRUCTION = """
-将接收到的内容原样保存到 "block" 字段中。
+提取此页面的主要文章内容，包括标题和段落。以JSON格式输出，并包含在一个'content'字段中。
 """
 
-def llm_config(instruction: str = DEFAULT_INSTRUCTION):
+def llm_config(
+    instruction: str = DEFAULT_INSTRUCTION,
+    save_screenshot: bool = False,
+    save_pdf: bool = False
+):
     litellm.client_session_timeout = 3000
     # litellm._turn_on_debug() 
     
@@ -44,8 +48,8 @@ def llm_config(instruction: str = DEFAULT_INSTRUCTION):
     # type: ignore
     return CrawlerRunConfig(
         extraction_strategy=llm_strat,
-        screenshot=True,
-        pdf=True,
+        screenshot=save_screenshot,
+        pdf=save_pdf,
         cache_mode=CacheMode.DISABLED,
         word_count_threshold=1,
         remove_overlay_elements=True,

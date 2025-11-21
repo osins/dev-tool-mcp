@@ -72,6 +72,16 @@ async def handle_list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "The instruction to use for the LLM",
                         "default": DEFAULT_INSTRUCTION
+                    },
+                    "save_screenshot": {
+                        "type": "boolean",
+                        "description": "Save a screenshot of the page",
+                        "default": False
+                    },
+                    "save_pdf": {
+                        "type": "boolean",
+                        "description": "Save a PDF of the page",
+                        "default": False
                     }
                 },
                 "required": ["url", "save_path"]
@@ -98,8 +108,10 @@ async def handle_call_tool(name: str, arguments: dict[str, object]) -> list[Text
         url = cast(str, arguments.get("url", ""))
         save_path = cast(str, arguments.get("save_path", ""))
         instruction = cast(str, arguments.get("instruction", DEFAULT_INSTRUCTION))
-        
-        result = await crawl_web_page(url, save_path, instruction)
+        save_screenshot = cast(bool, arguments.get("save_screenshot", False))
+        save_pdf = cast(bool, arguments.get("save_pdf", False))
+
+        result = await crawl_web_page(url, save_path, instruction, save_screenshot, save_pdf)
         return [TextContent(type="text", text=result)]
     else:
         error_msg = f"Unknown tool: {name}"
