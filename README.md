@@ -2,6 +2,25 @@
 
 An MCP (Model Context Protocol) server that provides web crawling capabilities using crawl4ai. Supports multiple content formats output (HTML, JSON, PDF, screenshots, Markdown) and browser interaction features.
 
+## Quick Start
+
+To launch the server, you have several options:
+
+### Option 1: Using the Python launch script
+```bash
+python launch_server.py
+```
+
+### Option 2: Using the shell script (Unix-based systems)
+```bash
+./launch_server.sh
+```
+
+### Option 3: Direct execution
+```bash
+python mcp_server/server.py
+```
+
 ## Table of Contents
 
 - [MCP Configuration](#mcp-configuration)
@@ -17,15 +36,20 @@ An MCP (Model Context Protocol) server that provides web crawling capabilities u
 
 ## MCP Configuration
 
-To configure this server with MCP, add the following to your MCP client configuration:
+To configure this server with MCP, you have multiple options depending on your setup:
+
+### Method 1: Using the launch script (Recommended)
+
+This is the recommended approach as it handles virtual environment setup and dependency installation automatically:
 
 ```json
 {
   "mcpServers": {
     "dev-tool-mcp": {
-      "command": "python",
+      "command": "/bin/bash",
       "args": [
-        "/absolute/path/to/your/dev-tool-mcp/mcp_server/server.py"
+        "-c",
+        "cd /absolute/path/to/your/dev-tool-mcp && ./launch_server.sh"
       ],
       "description": "MCP development tool server providing web crawling, browser automation, content extraction, and real-time page analysis capabilities"
     }
@@ -33,39 +57,48 @@ To configure this server with MCP, add the following to your MCP client configur
 }
 ```
 
-Make sure to replace `/absolute/path/to/your/dev-tool-mcp/` with the actual absolute path to your project directory.
+Make sure to replace `/absolute/path/to/your/dev-tool-mcp` with the actual absolute path to your project directory.
 
-For example, if your project is located at `/Users/username/projects/dev-tool-mcp`, the configuration would be:
+### Method 2: Using the virtual environment Python directly
+
+If you prefer to run the server directly with the virtual environment:
 
 ```json
 {
   "mcpServers": {
     "dev-tool-mcp": {
-      "command": "python",
-      "args": [
-        "/Users/username/projects/dev-tool-mcp/mcp_server/server.py"
-      ],
+      "command": "/absolute/path/to/your/dev-tool-mcp/launch_server.sh",
+      "args": [],
       "description": "MCP development tool server providing web crawling, browser automation, content extraction, and real-time page analysis capabilities"
     }
   }
 }
 ```
 
-Alternatively, if you want to use the virtual environment Python directly:
+### Method 3: Using the installed console script
+
+If the package is installed in the virtual environment, you can use the console script:
 
 ```json
 {
   "mcpServers": {
     "dev-tool-mcp": {
-      "command": "/Users/username/projects/dev-tool-mcp/venv/bin/python",
-      "args": [
-        "/Users/username/projects/dev-tool-mcp/mcp_server/server.py"
-      ],
+      "command": "/absolute/path/to/your/dev-tool-mcp/launch_server.sh",
+      "args": [],
       "description": "MCP development tool server providing web crawling, browser automation, content extraction, and real-time page analysis capabilities"
     }
   }
 }
 ```
+
+> **Note**: The launch script (Method 1) is recommended because it will:
+> - Check if the virtual environment exists
+> - Create it if needed
+> - Install dependencies from pyproject.toml
+> - Activate the environment
+> - Start the server with all necessary dependencies
+>
+> This ensures a consistent and reliable setup for the MCP server.
 
 ## Features
 
