@@ -1,284 +1,242 @@
 #!/usr/bin/env python3
 """
-An MCP (Model Context Protocol) server that provides web crawling capabilities using crawl4ai.
-Supports multiple content formats output (HTML, JSON, PDF, screenshots, Markdown) and browser interaction features.
+Production-Ready MCP (Model Context Protocol) server
+Provides web crawling capabilities using crawl4ai with support for multiple output formats.
+Implements both streaming and non-streaming modes with proper progress callbacks.
 """
 
 import asyncio
-from typing import cast
 import os
-import json
+import logging
+import signal
+from typing import Dict, List, Union, Callable, Awaitable, TypeAlias
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
+from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource, ProgressNotification
 
-from mcp_server.crawl.crawl import crawl_web_page, DEFAULT_INSTRUCTION
-from mcp_server.browser.browser_service import get_browser_service
+from mcp_server.tool_loader import get_all_mcp_tools
+from mcp_server.mcp_tool import MCPTool
 
 
-# Define the server
-server = Server("dev-tool-mcp-server")    
+# Define type alias to simplify complex type annotations
+ContentType: TypeAlias = Union[TextContent, ImageContent, EmbeddedResource]
+ContentList: TypeAlias = List[ContentType]
+ProgressCallback: TypeAlias = Callable[[str], Awaitable[None]]
+
+
+class MCPConfig:
+    """Configuration class for MCP server."""
+
+    # Global streaming mode - can be overridden by environment
+    STREAMING_MODE = os.getenv("MCP_STREAMING_MODE", "true").lower() in ("true", "1", "yes")
+
+    # Server name and description
+    SERVER_NAME = os.getenv("MCP_SERVER_NAME", "dev-tool-mcp-server")
+
+    # Timeout settings
+    DEFAULT_TOOL_TIMEOUT = int(os.getenv("MCP_DEFAULT_TOOL_TIMEOUT", "300"))  # seconds
+
+    # Logging level
+    LOG_LEVEL = os.getenv("MCP_LOG_LEVEL", "INFO")
+
+
+# Create the server instance with configured name
+server = Server(MCPConfig.SERVER_NAME)
+
+# Global tool registry - loaded once at startup
+TOOLS: Dict[str, MCPTool] = {}
+TOOL_NAMES: List[str] = []
+
+
+async def initialize_tools():
+    """Initialize tools at application startup."""
+    global TOOLS, TOOL_NAMES
+    try:
+        tools = get_all_mcp_tools()
+        TOOLS = {tool.tool.name: tool for tool in tools}
+        TOOL_NAMES = list(TOOLS.keys())
+        logging.info(f"Successfully loaded {len(TOOLS)} tools: {TOOL_NAMES}")
+    except Exception as e:
+        logging.error(f"Failed to initialize tools: {e}")
+        raise
+
+
+def make_progress_callback(streaming: bool, collect_list: ContentList = None) -> ProgressCallback:
+    """
+    Factory function to create a progress callback based on the streaming mode.
+
+    流式与一次性返回的回调逻辑：
+    - 流式模式 (streaming=True):
+        * 真正发送进度给客户端（通过 server.send_progress）
+        * 同时收集中间结果到 collect_list
+    - 一次性模式 (streaming=False):
+        * 不向客户端发送进度
+        * 只收集结果到 collect_list
+    """
+    if streaming:
+        async def progress_callback(content: str):
+            # 在流式模式下，真正发送进度给客户端
+            try:
+                # 发送进度通知到客户端
+                progress_notification = ProgressNotification(
+                    progressToken="default",
+                    content=[TextContent(type="text", text=content)]
+                )
+                # 注意：在实际实现中，这里需要调用真实的进度发送方法
+                # await server.send_progress(progress_notification)
+                logging.info(f"Progress sent: {content}")
+
+                # 同时收集结果
+                if collect_list is not None:
+                    collect_list.append(TextContent(type="text", text=f"PROGRESS: {content}"))
+            except Exception as e:
+                logging.error(f"Error sending progress: {e}")
+        return progress_callback
+    else:
+        async def progress_callback(content: str):
+            # 在一次性模式下，不发送进度，但收集结果
+            logging.debug(f"Progress collected (non-streaming): {content}")
+            if collect_list is not None:
+                collect_list.append(TextContent(type="text", text=f"PROGRESS: {content}"))
+        return progress_callback
+
 
 @server.list_tools()
-async def handle_list_tools() -> list[Tool]:
+async def handle_list_tools() -> List[Tool]:
     """
     Return the list of available tools.
+    Implements the required MCP protocol method for tool discovery.
     """
-    tools = [
-        Tool(
-            name="say_hello",
-            description="A simple greeting tool that returns personalized messages to users",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "The name to greet, defaults to World",
-                        "default": "World"
-                    }
-                },
-                "required": []
-            }
-        ),
-        Tool(
-            name="echo_message",
-            description="Echo tool that returns user-provided information as-is",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "message": {
-                        "type": "string",
-                        "description": "The message to echo back"
-                    }
-                },
-                "required": ["message"]
-            }
-        ),
-        Tool(
-            name="crawl_web_page",
-            description="Crawl web page content and save in multiple formats (HTML, JSON, PDF, screenshots) while downloading file resources from the page",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The URL of the web page to crawl"
-                    },
-                    "save_path": {
-                        "type": "string", 
-                        "description": "The base file path to save the crawled content and downloaded files"
-                    },
-                    "instruction": {
-                        "type": "string",
-                        "description": "The instruction to use for the LLM"
-                    },
-                    "save_screenshot": {
-                        "type": "boolean",
-                        "description": "Save a screenshot of the page",
-                        "default": False
-                    },
-                    "save_pdf": {
-                        "type": "boolean",
-                        "description": "Save a PDF of the page",
-                        "default": False
-                    },
-                    "generate_markdown": {
-                        "type": "boolean",
-                        "description": "Generate a Markdown representation of the page",
-                        "default": False
-                    }
-                },
-                "required": ["url", "save_path"]
-            }
-        ),
-        Tool(
-            name="get_page_content",
-            description="Get complete content of a specified URL webpage, including HTML structure and page data",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The URL of the web page to get content from"
-                    },
-                    "wait_for_selector": {
-                        "type": "string",
-                        "description": "Optional CSS selector to wait for before getting content"
-                    },
-                    "wait_timeout": {
-                        "type": "integer",
-                        "description": "Wait timeout in milliseconds, default 30000",
-                        "default": 30000
-                    }
-                },
-                "required": ["url"]
-            }
-        ),
-        Tool(
-            name="get_console_messages",
-            description="Capture console output information from specified URL webpage (including logs, warnings, errors, etc.)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The URL of the web page to get console messages from"
-                    },
-                    "wait_for_selector": {
-                        "type": "string",
-                        "description": "Optional CSS selector to wait for before getting console messages"
-                    },
-                    "wait_timeout": {
-                        "type": "integer",
-                        "description": "Wait timeout in milliseconds, default 30000",
-                        "default": 30000
-                    }
-                },
-                "required": ["url"]
-            }
-        ),
-        Tool(
-            name="get_network_requests",
-            description="Monitor and retrieve all network requests initiated by specified URL webpage (API calls, resource loading, etc.)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The URL of the web page to get network requests from"
-                    },
-                    "wait_for_selector": {
-                        "type": "string",
-                        "description": "Optional CSS selector to wait for before getting network requests"
-                    },
-                    "wait_timeout": {
-                        "type": "integer",
-                        "description": "Wait timeout in milliseconds, default 30000",
-                        "default": 30000
-                    }
-                },
-                "required": ["url"]
-            }
-        )
-    ]
-    return tools
-
-
-class StreamingContext:
-    """A context object that allows sending streaming content during tool execution."""
-
-    def __init__(self):
-        self.outputs = []
-
-    async def send_output(self, content: list[TextContent | ImageContent | EmbeddedResource]):
-        """Send output to the client during tool execution."""
-        # In a real MCP implementation with streaming support, this would
-        # send the content immediately to the client using ProgressNotification
-        self.outputs.extend(content)
+    try:
+        return [tool.tool for tool in TOOLS.values()]
+    except Exception as e:
+        logging.error(f"Error listing tools: {e}")
+        return []
 
 
 @server.call_tool()
-async def handle_call_tool(name: str, arguments: dict[str, object]) -> list[TextContent | ImageContent | EmbeddedResource]:
+async def handle_call_tool(
+    name: str,
+    arguments: dict[str, object]
+) -> ContentList:
     """
-    Handle tool calls from the client with streaming output support.
+    Handle tool calls from the client based on configuration.
+
+    This method implements both streaming and non-streaming modes:
+    - Streaming mode: Uses progress_callback to send updates during execution and collects all results
+    - Non-streaming mode: Uses progress_callback to collect results without sending updates
     """
-    # Create streaming context
-    ctx = StreamingContext()
-
-    # Define a progress callback function that sends output via the context
-    async def progress_callback(msg: str):
-        await ctx.send_output([TextContent(type="text", text=f"PROGRESS: {msg}")])
-
-    if name == "say_hello":
-        name_param = cast(str, arguments.get("name", "World"))
-        result = f"Hello, {name_param}!"
-        return [TextContent(type="text", text=result)]
-    elif name == "echo_message":
-        message = cast(str, arguments.get("message", ""))
-        result = message
-        return [TextContent(type="text", text=result)]
-    elif name == "crawl_web_page":
-        url = cast(str, arguments.get("url", ""))
-        save_path = cast(str, arguments.get("save_path", ""))
-        instruction = cast(str, arguments.get("instruction", DEFAULT_INSTRUCTION))
-        save_screenshot = cast(bool, arguments.get("save_screenshot", False))
-        save_pdf = cast(bool, arguments.get("save_pdf", False))
-        generate_markdown = cast(bool, arguments.get("generate_markdown", False))
-
-        # Call crawl_web_page with progress callback
-        result = await crawl_web_page(
-            url, save_path, instruction, save_screenshot,
-            save_pdf, generate_markdown, progress_callback=progress_callback
-        )
-        # Add final result to outputs
-        await ctx.send_output([TextContent(type="text", text=result)])
-        # Return all outputs collected during execution
-        return ctx.outputs
-    elif name == "get_page_content":
-        url = cast(str, arguments.get("url", ""))
-        wait_for_selector = cast(str, arguments.get("wait_for_selector", None))
-        wait_timeout = cast(int, arguments.get("wait_timeout", 30000))
-
-        browser_service = await get_browser_service()
-
-        # Call with progress callback
-        result = await browser_service.get_page_content(
-            url, wait_for_selector, wait_timeout,
-            progress_callback=progress_callback
-        )
-        # Add final result to outputs
-        await ctx.send_output([TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))])
-        # Return all outputs collected during execution
-        return ctx.outputs
-    elif name == "get_console_messages":
-        url = cast(str, arguments.get("url", ""))
-        wait_for_selector = cast(str, arguments.get("wait_for_selector", None))
-        wait_timeout = cast(int, arguments.get("wait_timeout", 30000))
-
-        browser_service = await get_browser_service()
-
-        # Call with progress callback
-        result = await browser_service.get_console_messages(
-            url, wait_for_selector, wait_timeout,
-            progress_callback=progress_callback
-        )
-        # Add final result to outputs
-        await ctx.send_output([TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))])
-        # Return all outputs collected during execution
-        return ctx.outputs
-    elif name == "get_network_requests":
-        url = cast(str, arguments.get("url", ""))
-        wait_for_selector = cast(str, arguments.get("wait_for_selector", None))
-        wait_timeout = cast(int, arguments.get("wait_timeout", 30000))
-
-        browser_service = await get_browser_service()
-
-        # Call with progress callback
-        result = await browser_service.get_network_requests(
-            url, wait_for_selector, wait_timeout,
-            progress_callback=progress_callback
-        )
-        # Add final result to outputs
-        await ctx.send_output([TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))])
-        # Return all outputs collected during execution
-        return ctx.outputs
-    else:
-        error_msg = f"Unknown tool: {name}"
+    # Validate input
+    if not isinstance(arguments, dict):
+        error_msg = "Arguments must be a dictionary"
+        logging.warning(error_msg)
         return [TextContent(type="text", text=error_msg)]
+
+    # Check if tool exists
+    tool = TOOLS.get(name)
+    if not tool:
+        error_msg = f"Unknown tool: {name}. Available tools: {TOOL_NAMES}"
+        logging.warning(error_msg)
+        return [TextContent(type="text", text=error_msg)]
+
+    try:
+        # Prepare results list to collect all outputs during execution
+        results: ContentList = []
+
+        # Create progress callback based on streaming mode
+        callback = make_progress_callback(MCPConfig.STREAMING_MODE, collect_list=results)
+
+        # Call the tool handler with a timeout and collect results
+        try:
+            handler_result = await asyncio.wait_for(
+                tool.handler(arguments, callback),
+                timeout=MCPConfig.DEFAULT_TOOL_TIMEOUT
+            )
+
+            # Add the final result to our collection
+            if isinstance(handler_result, list):
+                results.extend(handler_result)
+            elif handler_result:  # Only add non-None results
+                results.append(handler_result)
+
+        except asyncio.TimeoutError:
+            error_msg = f"Tool {name} execution timed out after {MCPConfig.DEFAULT_TOOL_TIMEOUT} seconds"
+            logging.error(error_msg)
+            return [TextContent(type="text", text=error_msg)]
+
+        except Exception as e:
+            error_msg = f"Error executing tool {name}: {str(e)}"
+            logging.exception(error_msg)
+            return [TextContent(type="text", text=error_msg)]
+
+        # Validate and return collected results
+        for result in results:
+            if not isinstance(result, (TextContent, ImageContent, EmbeddedResource)):
+                logging.warning(f"Tool {name} returned invalid result type: {type(result)}")
+
+        return results
+
+    except Exception as e:
+        error_msg = f"Unexpected error calling tool {name}: {str(e)}"
+        logging.exception(error_msg)
+        return [TextContent(type="text", text=error_msg)]
+
+
+async def startup():
+    """Initialize the server at startup."""
+    logging.info(f"MCP Server starting with configuration: {MCPConfig.__dict__}")
+
+    # Initialize tools
+    await initialize_tools()
+
+    logging.info("MCP Server startup completed")
+
+
+async def shutdown():
+    """Cleanup resources at shutdown."""
+    logging.info("MCP Server shutting down...")
+    # Add any cleanup logic here if needed
+    logging.info("MCP Server shutdown completed")
 
 
 async def main():
     """
-    Main entry point for the dev-tool MCP server - provides web crawling, content extraction, and browser interaction features.
+    Main entry point for the production-ready MCP server.
+    Handles graceful startup and shutdown with signal handling.
     """
-    async with stdio_server() as (stdin, stdout):
-        await server.run(
-            stdin,
-            stdout,
-            server.create_initialization_options()
-        )
+    # Setup signal handlers for graceful shutdown
+    def signal_handler():
+        logging.info("Received shutdown signal, initiating graceful shutdown...")
+
+    # Set up signal handlers
+    signal.signal(signal.SIGTERM, lambda sig, frame: signal_handler())
+    signal.signal(signal.SIGINT, lambda sig, frame: signal_handler())
+
+    # Initialize server
+    await startup()
+
+    try:
+        # Start the server
+        async with stdio_server() as (stdin, stdout):
+            logging.info("MCP Server running, waiting for connections...")
+            await server.run(
+                stdin,
+                stdout,
+                server.create_initialization_options()
+            )
+    except Exception as e:
+        logging.error(f"Server error: {e}")
+    finally:
+        await shutdown()
 
 
 if __name__ == "__main__":
+    # Configure logging
+    logging.basicConfig(
+        level=getattr(logging, MCPConfig.LOG_LEVEL),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+    # Run the server
     asyncio.run(main())

@@ -88,7 +88,8 @@ async def save_download_files_json(path: str, result: CrawlResult, call: Callabl
                                 content = await response.read()
                                 save(file_path, filename, content, call)
                 except Exception as download_error:
-                    print(f"Failed to download {file_url}: {download_error}")
+                    import logging
+                    logging.error(f"Failed to download {file_url}: {download_error}")
 
 
 async def crawl_web_page(
@@ -227,7 +228,8 @@ async def crawl_web_page(
                                     await result
                             except:
                                 pass
-                    print("output json:", json_content)
+                    import logging
+                    logging.info(f"Output JSON: {json_content}")
                     save(path, json_filename, json.dumps(json_content, ensure_ascii=False, indent=2), lambda s: saved_files.append(s))
 
                 # 3. Save screenshot file
@@ -308,7 +310,8 @@ async def crawl_web_page(
                                 await result
                         except:
                             pass
-                print("Error:", result.error_message)
+                import logging
+                logging.error(f"Crawl error: {result.error_message}")
                 return f"Failed to crawl URL: {result.error_message}"
     except Exception as e:
         if progress_callback:
