@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 
+import sys
+import os
+# Add the project root directory to Python path to allow module imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import pytest
 
 import asyncio
 
 import tempfile
 
-import os
-
 import shutil
 
-from spider_mcp_server.server import handle_call_tool, TextContent
-
-
+from mcp_server.server import handle_call_tool, TextContent
 
 def clean_temp_dir(temp_dir):
 
