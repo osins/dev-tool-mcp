@@ -32,6 +32,16 @@ dev = [
     "pytest-asyncio>=0.20.0"
 ]
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = [
+    "-ra",
+    "--tb=short",
+]
+testpaths = [
+    "test",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
 

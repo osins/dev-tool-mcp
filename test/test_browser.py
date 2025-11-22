@@ -12,10 +12,10 @@ async def test_browser_functions():
     """Test all browser service functions."""
     print("Initializing browser service...")
     browser_service = await get_browser_service()
-    
+
     # Test URL
     test_url = "https://nextjs.org/"
-    
+
     print(f"\n1. Testing get_page_content for {test_url}")
     try:
         content_result = await browser_service.get_page_content(test_url)
@@ -25,7 +25,7 @@ async def test_browser_functions():
         print(f"   Content length: {len(content_result.get('html', ''))} characters")
     except Exception as e:
         print(f"   Error: {str(e)}")
-    
+
     print(f"\n2. Testing get_console_messages for {test_url}")
     try:
         console_result = await browser_service.get_console_messages(test_url)
@@ -34,7 +34,7 @@ async def test_browser_functions():
         print(f"   Console messages count: {len(console_result.get('console_messages', []))}")
     except Exception as e:
         print(f"   Error: {str(e)}")
-    
+
     print(f"\n3. Testing get_network_requests for {test_url}")
     try:
         network_result = await browser_service.get_network_requests(test_url)
@@ -46,5 +46,10 @@ async def test_browser_functions():
         print(f"   Error: {str(e)}")
 
 
-if __name__ == "__main__":
+def run_tests():
+    """Run the browser tests."""
     asyncio.run(test_browser_functions())
+
+
+if __name__ == "__main__":
+    run_tests()
